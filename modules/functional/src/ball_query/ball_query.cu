@@ -20,23 +20,17 @@ __global__ void ball_query_kernel(int b, int n, int m, float r2, int u,
                                   const float *__restrict__ centers_coords,
                                   const float *__restrict__ points_coords,
                                   int *__restrict__ neighbors_indices) {
-
-  // launched batch_size blocks
   int batch_index = blockIdx.x;
   int index = threadIdx.x;
   int stride = blockDim.x;
-
-  // locate data of the current batch
   points_coords += batch_index * n * 3;
   centers_coords += batch_index * m * 3;
   neighbors_indices += batch_index * m * u;
 
-  // one-dim parallel, further parallel each batch by dividing centers_coords.
   for (int j = index; j < m; j += stride) {
     float center_x = centers_coords[j];
     float center_y = centers_coords[j + m];
     float center_z = centers_coords[j + m + m];
-    // simple loop
     for (int k = 0, cnt = 0; k < n && cnt < u; ++k) {
       float dx = center_x - points_coords[k];
       float dy = center_y - points_coords[k + n];
@@ -58,9 +52,8 @@ __global__ void ball_query_kernel(int b, int n, int m, float r2, int u,
 void ball_query(int b, int n, int m, float r2, int u,
                 const float *centers_coords, const float *points_coords,
                 int *neighbors_indices) {
-  // launch batch_size blocks, this can parallel the code by batch
-  ball_query_kernel<<<b, optimal_num_threads(m), 0, at::cuda::getCurrentCUDAStream()>>>(
-    b, n, m, r2, u, centers_coords, points_coords, neighbors_indices
-  );
+  ball_query_kernel<<<b, optimal_num_threads(m), 0,
+                      at::cuda::getCurrentCUDAStream()>>>(
+      b, n, m, r2, u, centers_coords, points_coords, neighbors_indices);
   CUDA_CHECK_ERRORS();
 }

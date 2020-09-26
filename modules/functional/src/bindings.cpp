@@ -14,10 +14,8 @@ PYBIND11_MODULE(_pvcnn_backend, m) {
         "Gather Centers' Features backward (CUDA)");
 
   m.def("furthest_point_sampling", &furthest_point_sampling_forward,
-        "Furthest Point Sampling (CUDA)");  // No backward, only provide a parameter for ball_query.
-
-  m.def("ball_query", &ball_query_forward, 
-        "Ball Query (CUDA)"); // No backward, only provide a parameter for grouping.
+        "Furthest Point Sampling (CUDA)");
+  m.def("ball_query", &ball_query_forward, "Ball Query (CUDA)");
 
   m.def("grouping_forward", &grouping_forward,
         "Grouping Features forward (CUDA)");
@@ -31,6 +29,19 @@ PYBIND11_MODULE(_pvcnn_backend, m) {
         &three_nearest_neighbors_interpolate_backward,
         "3 Nearest Neighbors Interpolate backward (CUDA)");
 
+  m.def("k_nearest_neighbors",
+        &k_nearest_neighbors,
+        "k Nearest Neighbors (CUDA)");
+  m.def("k_nearest_neighbors_interpolate_forward",
+        &k_nearest_neighbors_interpolate_forward,
+        "k Nearest Neighbors Interpolate forward (CUDA)");
+  m.def("k_nearest_neighbors_interpolate_backward",
+        &k_nearest_neighbors_interpolate_backward,
+        "k Nearest Neighbors Interpolate backward (CUDA)");
+  m.def("k_nearest_neighbors_weighted_interpolate_backward",
+        &k_nearest_neighbors_weighted_interpolate_backward,
+        "k Nearest Neighbors Weighted Interpolate backward (CUDA)");
+
   m.def("trilinear_devoxelize_forward", &trilinear_devoxelize_forward,
         "Trilinear Devoxelization forward (CUDA)");
   m.def("trilinear_devoxelize_backward", &trilinear_devoxelize_backward,
@@ -40,4 +51,9 @@ PYBIND11_MODULE(_pvcnn_backend, m) {
         "Voxelization forward with average pooling (CUDA)");
   m.def("avg_voxelize_backward", &avg_voxelize_backward,
         "Voxelization backward (CUDA)");
+
+  m.def("trilinear_voxelize_forward", &trilinear_voxelize_forward,
+        "Trilinear Voxelization forward with average pooling (CUDA)");
+  m.def("trilinear_voxelize_backward", &trilinear_voxelize_backward,
+        "Trilinear Voxelization backward (CUDA)");
 }

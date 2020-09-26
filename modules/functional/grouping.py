@@ -2,8 +2,6 @@ from torch.autograd import Function
 
 from modules.functional.backend import _backend
 
-__all__ = ['grouping']
-
 
 class Grouping(Function):
     @staticmethod

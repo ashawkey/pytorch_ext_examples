@@ -5,8 +5,6 @@ import torch.nn.functional as F
 
 import modules.functional as PF
 
-__all__ = ['FrustumPointNetLoss', 'get_box_corners_3d']
-
 
 class FrustumPointNetLoss(nn.Module):
     def __init__(self, num_heading_angle_bins, num_size_templates, size_templates, box_loss_weight=1.0,

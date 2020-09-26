@@ -1,7 +1,5 @@
 import torch.nn as nn
 
-__all__ = ['SE3d']
-
 
 class SE3d(nn.Module):
     def __init__(self, channel, reduction=8):

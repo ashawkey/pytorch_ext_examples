@@ -3,8 +3,6 @@ import torch.nn as nn
 
 import modules.functional as F
 
-__all__ = ['BallQuery']
-
 
 class BallQuery(nn.Module):
     def __init__(self, radius, num_neighbors, include_coordinates=True):

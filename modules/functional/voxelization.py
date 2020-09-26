@@ -2,8 +2,6 @@ from torch.autograd import Function
 
 from modules.functional.backend import _backend
 
-__all__ = ['avg_voxelize']
-
 
 class AvgVoxelization(Function):
     @staticmethod
@@ -38,3 +36,38 @@ class AvgVoxelization(Function):
 
 
 avg_voxelize = AvgVoxelization.apply
+
+class TrilinearVoxelization(Function):
+    @staticmethod
+    def forward(ctx, features, coords, resolution):
+        """
+        :param ctx:
+        :param features: Features of the point cloud, FloatTensor[B, C, N]
+        :param coords: Voxelized Coordinates of each point, FloatTensor[B, 3, N]
+        :param resolution: Voxel resolution
+        :return:
+            Voxelized Features, FloatTensor[B, C, R, R, R]
+        """
+        features = features.contiguous()
+        coords = coords.contiguous()
+        b, c, _ = features.shape
+        out, indices, weights, counts = _backend.trilinear_voxelize_forward(features, coords, resolution)
+        ctx.save_for_backward(indices, weights, counts)
+
+        return out.view(b, c, resolution, resolution, resolution)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        """
+        :param ctx:
+        :param grad_output: gradient of output, FloatTensor[B, C, R, R, R]
+        :return:
+            gradient of inputs, FloatTensor[B, C, N]
+        """
+        b, c = grad_output.shape[:2]
+        indices, weights, counts = ctx.saved_tensors
+        grad_features = _backend.trilinear_voxelize_backward(grad_output.contiguous().view(b, c, -1), indices, weights, counts)
+        return grad_features, None, None
+
+
+trilinear_voxelize = TrilinearVoxelization.apply

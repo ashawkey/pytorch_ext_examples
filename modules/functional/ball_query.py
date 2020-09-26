@@ -2,8 +2,6 @@ from torch.autograd import Function
 
 from modules.functional.backend import _backend
 
-__all__ = ['ball_query']
-
 
 def ball_query(centers_coords, points_coords, radius, num_neighbors):
         """

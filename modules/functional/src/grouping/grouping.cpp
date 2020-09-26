@@ -11,23 +11,20 @@ at::Tensor grouping_forward(at::Tensor features, at::Tensor indices) {
   CHECK_IS_FLOAT(features);
   CHECK_IS_INT(indices);
 
-  // [B, C, N], N = all points
   int b = features.size(0);
   int c = features.size(1);
   int n = features.size(2);
-
-  // [B, M, U], M = selected center points, U = neighbors
   int m = indices.size(1);
   int u = indices.size(2);
-
-  // allocate output
-  at::Tensor output = torch::zeros({b, c, m, u}, at::device(features.device()).dtype(at::ScalarType::Float));
-
-  grouping(b, c, n, m, u, features.data_ptr<float>(), indices.data_ptr<int>(), output.data_ptr<float>());
+  at::Tensor output = torch::zeros(
+      {b, c, m, u}, at::device(features.device()).dtype(at::ScalarType::Float));
+  grouping(b, c, n, m, u, features.data_ptr<float>(), indices.data_ptr<int>(),
+           output.data_ptr<float>());
   return output;
 }
 
-at::Tensor grouping_backward(at::Tensor grad_y, at::Tensor indices, const int n) {
+at::Tensor grouping_backward(at::Tensor grad_y, at::Tensor indices,
+                             const int n) {
   CHECK_CUDA(grad_y);
   CHECK_CUDA(indices);
   CHECK_CONTIGUOUS(grad_y);
@@ -39,10 +36,9 @@ at::Tensor grouping_backward(at::Tensor grad_y, at::Tensor indices, const int n)
   int c = grad_y.size(1);
   int m = indices.size(1);
   int u = indices.size(2);
-
-  // allocate output
-  at::Tensor grad_x = torch::zeros({b, c, n}, at::device(grad_y.device()).dtype(at::ScalarType::Float));
-
-  grouping_grad(b, c, n, m, u, grad_y.data_ptr<float>(), indices.data_ptr<int>(), grad_x.data_ptr<float>());
+  at::Tensor grad_x = torch::zeros(
+      {b, c, n}, at::device(grad_y.device()).dtype(at::ScalarType::Float));
+  grouping_grad(b, c, n, m, u, grad_y.data_ptr<float>(),
+                indices.data_ptr<int>(), grad_x.data_ptr<float>());
   return grad_x;
 }

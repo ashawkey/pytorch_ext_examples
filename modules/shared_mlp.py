@@ -1,7 +1,5 @@
 import torch.nn as nn
 
-__all__ = ['SharedMLP']
-
 
 class SharedMLP(nn.Module):
     def __init__(self, in_channels, out_channels, dim=1):

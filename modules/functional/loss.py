@@ -1,8 +1,6 @@
 import torch
 import torch.nn.functional as F
 
-__all__ = ['kl_loss', 'huber_loss']
-
 
 def kl_loss(x, y):
     x = F.softmax(x.detach(), dim=1)

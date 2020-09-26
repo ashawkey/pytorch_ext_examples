@@ -21,13 +21,10 @@ __global__ void gather_features_kernel(int b, int c, int n, int m,
   int batch_index = blockIdx.x;
   int channel_index = blockIdx.y;
   int temp_index = batch_index * c + channel_index;
-
-  // locate current batch and current channel
   features += temp_index * n;
   indices += batch_index * m;
   out += temp_index * m;
-  
-  // dim1 parallel
+
   for (int j = threadIdx.x; j < m; j += blockDim.x) {
     out[j] = features[indices[j]];
   }
@@ -35,11 +32,9 @@ __global__ void gather_features_kernel(int b, int c, int n, int m,
 
 void gather_features(int b, int c, int n, int m, const float *features,
                      const int *indices, float *out) {
-  // launch b*c blocks and make dim1 parallel! 
-  // this is simpler than launch b block and make dim2 parallel.
-  gather_features_kernel<<<dim3(b, c, 1), optimal_num_threads(m), 0, at::cuda::getCurrentCUDAStream()>>>(
-    b, c, n, m, features, indices, out
-  );
+  gather_features_kernel<<<dim3(b, c, 1), optimal_num_threads(m), 0,
+                           at::cuda::getCurrentCUDAStream()>>>(
+      b, c, n, m, features, indices, out);
   CUDA_CHECK_ERRORS();
 }
 
@@ -65,7 +60,6 @@ __global__ void gather_features_grad_kernel(int b, int c, int n, int m,
   indices += batch_index * m;
   grad_x += temp_index * n;
 
-  // don't need to be atomic ? n > m
   for (int j = threadIdx.x; j < m; j += blockDim.x) {
     atomicAdd(grad_x + indices[j], grad_y[j]);
   }
@@ -174,6 +168,7 @@ __global__ void furthest_point_sampling_kernel(int b, int n, int m,
 
 void furthest_point_sampling(int b, int n, int m, const float *coords,
                              float *distances, int *indices) {
-  furthest_point_sampling_kernel<<<b, 512>>>(b, n, m, coords, distances, indices);
+  furthest_point_sampling_kernel<<<b, 512>>>(b, n, m, coords, distances,
+                                             indices);
   CUDA_CHECK_ERRORS();
 }

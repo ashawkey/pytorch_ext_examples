@@ -28,7 +28,6 @@ __global__ void trilinear_devoxelize_kernel(int b, int c, int n, int r, int r2,
   int batch_index = blockIdx.x;
   int stride = blockDim.x;
   int index = threadIdx.x;
-
   coords += batch_index * n * 3;
   inds += batch_index * n * 8;
   wgts += batch_index * n * 8;
@@ -62,20 +61,25 @@ __global__ void trilinear_devoxelize_kernel(int b, int c, int n, int r, int r2,
     int x_lo = static_cast<int>(x_lo_f);
     int y_lo = static_cast<int>(y_lo_f);
     int z_lo = static_cast<int>(z_lo_f);
+
+    // bit masks, -1 = 111...111, 0 = 000...000
     int x_hi = (x_d_1 > 0) ? -1 : 0;
     int y_hi = (y_d_1 > 0) ? -1 : 0;
+
+    // simple int value
     int z_hi = (z_d_1 > 0) ? 1 : 0;
 
     int idx000 = x_lo * r2 + y_lo * r + z_lo;
-    int idx001 = idx000 + z_hi;      // x_lo * r2 + y_lo * r + z_hi;
-    int idx010 = idx000 + (y_hi & r);  // x_lo * r2 + y_hi * r + z_lo;
-    int idx011 = idx010 + z_hi;      // x_lo * r2 + y_hi * r + z_hi;
     int idx100 = idx000 + (x_hi & r2); // x_hi * r2 + y_lo * r + z_lo;
-    int idx101 = idx100 + z_hi;      // x_hi * r2 + y_lo * r + z_hi;
+    
+    int idx010 = idx000 + (y_hi & r);  // x_lo * r2 + y_hi * r + z_lo;
     int idx110 = idx100 + (y_hi & r);  // x_hi * r2 + y_hi * r + z_lo;
+
+    int idx001 = idx000 + z_hi;      // x_lo * r2 + y_lo * r + z_hi;
+    int idx011 = idx010 + z_hi;      // x_lo * r2 + y_hi * r + z_hi;
+    int idx101 = idx100 + z_hi;      // x_hi * r2 + y_lo * r + z_hi;
     int idx111 = idx110 + z_hi;      // x_hi * r2 + y_hi * r + z_hi;
 
-    // only training need to memorize these parameters
     if (is_training) {
       wgts[i] = wgt000;
       wgts[i + n] = wgt001;
@@ -166,13 +170,15 @@ __global__ void trilinear_devoxelize_grad_kernel(
 void trilinear_devoxelize(int b, int c, int n, int r, int r2, int r3,
                           bool training, const float *coords, const float *feat,
                           int *inds, float *wgts, float *outs) {
-  trilinear_devoxelize_kernel<<<b, optimal_num_threads(n)>>>(b, c, n, r, r2, r3, training, coords, feat, inds, wgts, outs);
+  trilinear_devoxelize_kernel<<<b, optimal_num_threads(n)>>>(
+      b, c, n, r, r2, r3, training, coords, feat, inds, wgts, outs);
   CUDA_CHECK_ERRORS();
 }
 
 void trilinear_devoxelize_grad(int b, int c, int n, int r3, const int *inds,
                                const float *wgts, const float *grad_y,
                                float *grad_x) {
-  trilinear_devoxelize_grad_kernel<<<b, optimal_num_threads(n)>>>(b, c, n, r3, inds, wgts, grad_y, grad_x);
+  trilinear_devoxelize_grad_kernel<<<b, optimal_num_threads(n)>>>(
+      b, c, n, r3, inds, wgts, grad_y, grad_x);
   CUDA_CHECK_ERRORS();
 }

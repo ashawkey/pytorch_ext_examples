@@ -4,8 +4,6 @@ from torch.autograd import Function
 
 from modules.functional.backend import _backend
 
-__all__ = ['gather', 'furthest_point_sample', 'logits_mask']
-
 
 class Gather(Function):
     @staticmethod
@@ -41,11 +39,12 @@ def furthest_point_sample(coords, num_samples):
     :param coords: coordinates of points, FloatTensor[B, 3, N]
     :param num_samples: int, M
     :return:
-       centers_coords: coordinates of sampled centers, FloatTensor[B, 3, M]
+        indices: IntTensor[B, M]
     """
     coords = coords.contiguous()
     indices = _backend.furthest_point_sampling(coords, num_samples)
-    return gather(coords, indices)
+    #return gather(coords, indices)
+    return indices
 
 
 def logits_mask(coords, logits, num_points_per_object):

@@ -21,7 +21,6 @@ __global__ void three_nearest_neighbors_kernel(
     int b, int n, int m, const float *__restrict__ points_coords,
     const float *__restrict__ centers_coords, float *__restrict__ weights,
     int *__restrict__ indices) {
-
   int batch_index = blockIdx.x;
   int index = threadIdx.x;
   int stride = blockDim.x;
@@ -35,7 +34,6 @@ __global__ void three_nearest_neighbors_kernel(
     float uy = points_coords[j + n];
     float uz = points_coords[j + n + n];
 
-    // good, hard-coding
     double best0 = 1e40, best1 = 1e40, best2 = 1e40;
     int besti0 = 0, besti1 = 0, besti2 = 0;
     for (int k = 0; k < m; ++k) {
@@ -63,8 +61,6 @@ __global__ void three_nearest_neighbors_kernel(
     best0 = max(min(1e10f, best0), 1e-10f);
     best1 = max(min(1e10f, best1), 1e-10f);
     best2 = max(min(1e10f, best2), 1e-10f);
-
-    // weights of interpolation
     float d0d1 = best0 * best1;
     float d0d2 = best0 * best2;
     float d1d2 = best1 * best2;
@@ -86,7 +82,8 @@ __global__ void three_nearest_neighbors_kernel(
     m   : number of query centers
     n   : number of points in point clouds
     centers_features: features of centers, FloatTensor[b, c, m]
-    indices         : indices of nearest 3 centers to the point, IntTensor[b, 3, n]
+    indices         : indices of nearest 3 centers to the point,
+                      IntTensor[b, 3, n]
     weights         : weights for interpolation, FloatTensor[b, 3, n]
     out             : features of points, FloatTensor[b, c, n]
 */
@@ -94,7 +91,6 @@ __global__ void three_nearest_neighbors_interpolate_kernel(
     int b, int c, int m, int n, const float *__restrict__ centers_features,
     const int *__restrict__ indices, const float *__restrict__ weights,
     float *__restrict__ out) {
-
   int batch_index = blockIdx.x;
   centers_features += batch_index * m * c;
   indices += batch_index * n * 3;
@@ -125,12 +121,12 @@ void three_nearest_neighbors_interpolate(int b, int c, int m, int n,
                                          const float *centers_features,
                                          int *indices, float *weights,
                                          float *out) {
-  three_nearest_neighbors_kernel<<<b, optimal_num_threads(n), 0, at::cuda::getCurrentCUDAStream()>>>(
-    b, n, m, points_coords, centers_coords, weights, indices
-  );
-  three_nearest_neighbors_interpolate_kernel<<<b, optimal_block_config(n, c), 0, at::cuda::getCurrentCUDAStream()>>>(
-    b, c, m, n, centers_features, indices, weights, out
-  );
+  three_nearest_neighbors_kernel<<<b, optimal_num_threads(n), 0,
+                                   at::cuda::getCurrentCUDAStream()>>>(
+      b, n, m, points_coords, centers_coords, weights, indices);
+  three_nearest_neighbors_interpolate_kernel<<<
+      b, optimal_block_config(n, c), 0, at::cuda::getCurrentCUDAStream()>>>(
+      b, c, m, n, centers_features, indices, weights, out);
   CUDA_CHECK_ERRORS();
 }
 
@@ -178,8 +174,240 @@ void three_nearest_neighbors_interpolate_grad(int b, int c, int n, int m,
                                               const int *indices,
                                               const float *weights,
                                               float *grad_x) {
-  three_nearest_neighbors_interpolate_grad_kernel<<<b, optimal_block_config(n, c), 0, at::cuda::getCurrentCUDAStream()>>>(
-    b, c, n, m, grad_y, indices, weights, grad_x
+  three_nearest_neighbors_interpolate_grad_kernel<<<
+      b, optimal_block_config(n, c), 0, at::cuda::getCurrentCUDAStream()>>>(
+      b, c, n, m, grad_y, indices, weights, grad_x);
+  CUDA_CHECK_ERRORS();
+}
+
+//////////////////////////////////////////////////////////////////////////////////
+
+/*
+  Function: k nearest neighbors (a naive implementation)
+  Args:
+    b   : batch size
+    n   : number of points in point clouds
+    m   : number of query centers
+    k   : number of neighbors
+    points_coords : coordinates of points, FloatTensor[b, 3, n]
+    centers_coords: coordinates of centers, FloatTensor[b, 3, m]
+
+    weights       : distance of nearest k centers to the point, FloatTensor[b, k, n]
+    indices       : indices of nearest k centers to the point, IntTensor[b, k, n]
+*/
+__global__ void k_nearest_neighbors_kernel(
+  int b, int n, int m, int k, 
+  const float *__restrict__ points_coords,
+  const float *__restrict__ centers_coords, 
+  float *__restrict__ weights,
+  int *__restrict__ indices) {
+
+  int batch_index = blockIdx.x;
+  int index = threadIdx.x;
+  int stride = blockDim.x;
+
+  points_coords += batch_index * 3 * n;
+  centers_coords += batch_index * 3 * m;
+  weights += batch_index * k * n;
+  indices += batch_index * k * n;
+
+  // dim1 parallel on n
+  for (int j = index; j < n; j += stride) {
+    float ux = points_coords[j];
+    float uy = points_coords[j + n];
+    float uz = points_coords[j + n + n];
+
+    for (int v = 0; v < m; ++v) {
+      float x = centers_coords[v];
+      float y = centers_coords[v + m];
+      float z = centers_coords[v + m + m];
+      float d = (ux - x) * (ux - x) + (uy - y) * (uy - y) + (uz - z) * (uz - z);
+
+      // insertion sort directly on indices & weights (distance)
+      for (int z = 0; z < k; ++z) {
+        if (d < weights[j + z * n]) {
+          for (int zz = k - 1; zz > z ; --zz) {
+            weights[j + zz * n] = weights[j + (zz - 1) * n];
+            indices[j + zz * n] = indices[j + (zz - 1) * n];
+          }
+          weights[j + z * n] = d;
+          indices[j + z * n] = v;
+          break;
+        }
+      }
+
+    }
+  }
+}
+
+void k_nearest_neighbors(int b, int m, int n, int k,
+  const float *points_coords,
+  const float *centers_coords,
+  int *indices, 
+  float *weights) {
+  k_nearest_neighbors_kernel<<<b, optimal_num_threads(n), 0, at::cuda::getCurrentCUDAStream()>>>(
+    b, n, m, k, points_coords, centers_coords, weights, indices
+  );
+  CUDA_CHECK_ERRORS();
+}
+
+/*
+Function: interpolate k nearest neighbors (forward)
+Args:
+  b   : batch size
+  c   : #channels of features
+  m   : number of query centers
+  n   : number of points in point clouds
+  k   : number of neighbors
+  centers_features: features of centers, FloatTensor[b, c, m]
+  indices         : indices of nearest k centers to the point, IntTensor[b, k, n]
+  weights         : weights for interpolation, FloatTensor[b, k, n]
+
+  out             : features of points, FloatTensor[b, c, n]
+*/
+__global__ void k_nearest_neighbors_interpolate_kernel(
+  int b, int c, int m, int n, int k,
+  const float *__restrict__ centers_features,
+  const int *__restrict__ indices,
+   const float *__restrict__ weights,
+  float *__restrict__ out) {
+      
+  int batch_index = blockIdx.x;
+  centers_features += batch_index * m * c;
+  indices += batch_index * n * k;
+  weights += batch_index * n * k;
+  out += batch_index * n * c;
+
+  const int index = threadIdx.y * blockDim.x + threadIdx.x;
+  const int stride = blockDim.y * blockDim.x;
+  for (int i = index; i < c * n; i += stride) {
+    const int l = i / n;
+    const int j = i % n;
+
+    for (int v = 0; v < k; ++v) {
+      out[i] += centers_features[l * m + indices[j + v * n]] * weights[j + v * n];
+    }
+
+  }
+}
+
+
+void k_nearest_neighbors_interpolate(int b, int c, int m, int n, int k,
+                                       const float *centers_features,
+                                       int *indices, 
+                                       float *weights,
+                                       float *out) {
+  k_nearest_neighbors_interpolate_kernel<<<b, optimal_block_config(n, c), 0, at::cuda::getCurrentCUDAStream()>>>(
+    b, c, m, n, k, centers_features, indices, weights, out
+  );
+  CUDA_CHECK_ERRORS();
+}
+
+/*
+Function: interpolate k nearest neighbors (backward)
+Args:
+  b   : batch size
+  c   : #channels of features
+  m   : number of query centers
+  n   : number of points in point clouds
+  k   : number of neighbors
+  grad_y  : grad of features of points, FloatTensor[b, c, n]
+  indices : indices of nearest k centers to the point, IntTensor[b, k, n]
+  weights : weights for interpolation, FloatTensor[b, k, n]
+  grad_x  : grad of features of centers, FloatTensor[b, c, m]
+*/
+__global__ void k_nearest_neighbors_interpolate_grad_kernel(
+  int b, int c, int n, int m, int k,
+  const float *__restrict__ grad_y,
+  const int *__restrict__ indices, 
+  const float *__restrict__ weights,
+  float *__restrict__ grad_x) {
+
+  int batch_index = blockIdx.x;
+  grad_y += batch_index * n * c;
+  indices += batch_index * n * k;
+  weights += batch_index * n * k;
+  grad_x += batch_index * m * c;
+
+  const int index = threadIdx.y * blockDim.x + threadIdx.x;
+  const int stride = blockDim.y * blockDim.x;
+  for (int i = index; i < c * n; i += stride) {
+    const int l = i / n;
+    const int j = i % n;
+
+    for (int v = 0; v < k; ++v) {
+      atomicAdd(grad_x + l * m + indices[j + v * n], grad_y[i] * weights[j + v * n]);
+    }
+
+  }
+}
+
+void k_nearest_neighbors_interpolate_grad(int b, int c, int n, int m, int k,
+                                            const float *grad_y,
+                                            const int *indices,
+                                            const float *weights,
+                                            float *grad_x) {
+  k_nearest_neighbors_interpolate_grad_kernel<<<b, optimal_block_config(n, c), 0, at::cuda::getCurrentCUDAStream()>>>(
+    b, c, n, m, k, grad_y, indices, weights, grad_x
+  );
+  CUDA_CHECK_ERRORS();
+}
+
+
+/*
+Function: weighted interpolate k nearest neighbors (backward)
+Args:
+  b   : batch size
+  c   : #channels of features
+  m   : number of query centers
+  n   : number of points in point clouds
+  k   : number of neighbors
+  grad_y  : grad of features of points, FloatTensor[b, c, n]
+  indices : indices of nearest k centers to the point, IntTensor[b, k, n]
+  centers_features: FloatTensor[b, c, m]
+  weights : weights for interpolation, FloatTensor[b, k, n]
+
+  grad_x  : grad of features of centers, FloatTensor[b, c, m]
+  grad_w  : grad of weights, FloatTensor[b, k, n]
+*/
+__global__ void k_nearest_neighbors_weighted_interpolate_grad_kernel(
+  int b, int c, int n, int m, int k,
+  const float *__restrict__ grad_y,
+  const int *__restrict__ indices, 
+  const float *__restrict__ weights,
+  const float *__restrict__ centers_features,
+  float *__restrict__ grad_x,
+  float *__restrict__ grad_w) {
+
+  int batch_index = blockIdx.x;
+  grad_y += batch_index * n * c;
+  indices += batch_index * n * k;
+  weights += batch_index * n * k;
+  centers_features += batch_index * m * c;
+  grad_x += batch_index * m * c;
+  grad_w += batch_index * n * k;
+
+  const int index = threadIdx.y * blockDim.x + threadIdx.x;
+  const int stride = blockDim.y * blockDim.x;
+  for (int i = index; i < c * n; i += stride) {
+    const int l = i / n; // channel
+    const int j = i % n; // point
+    for (int v = 0; v < k; ++v) {
+      atomicAdd(grad_x + l * m + indices[j + v * n], grad_y[i] * weights[j + v * n]);
+      atomicAdd(grad_w + j + v * n, grad_y[i] * centers_features[l * m + indices[j + v * n]]);
+    }
+  }
+}
+
+void k_nearest_neighbors_weighted_interpolate_grad(int b, int c, int n, int m, int k,
+                                            const float *grad_y,
+                                            const int *indices,
+                                            const float *weights,
+                                            const float *centers_features,
+                                            float *grad_x,
+                                            float *grad_w) {
+  k_nearest_neighbors_weighted_interpolate_grad_kernel<<<b, optimal_block_config(n, c), 0, at::cuda::getCurrentCUDAStream()>>>(
+    b, c, n, m, k, grad_y, indices, weights, centers_features, grad_x, grad_w
   );
   CUDA_CHECK_ERRORS();
 }

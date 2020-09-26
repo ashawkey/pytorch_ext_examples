@@ -13,7 +13,7 @@ at::Tensor ball_query_forward(at::Tensor centers_coords,
   CHECK_IS_FLOAT(centers_coords);
   CHECK_IS_FLOAT(points_coords);
 
-  int b = centers_coords.size(0); // batch_size, 3, num_points
+  int b = centers_coords.size(0);
   int m = centers_coords.size(2);
   int n = points_coords.size(2);
 

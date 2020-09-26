@@ -12,4 +12,13 @@ at::Tensor avg_voxelize_backward(const at::Tensor grad_y,
                                  const at::Tensor indices,
                                  const at::Tensor cnt);
 
+std::vector<at::Tensor> trilinear_voxelize_forward(const at::Tensor features,
+                                             const at::Tensor coords,
+                                             const int resolution);
+                                             
+at::Tensor trilinear_voxelize_backward(const at::Tensor grad_y,
+                                 const at::Tensor indices,
+                                 const at::Tensor weights,
+                                 const at::Tensor cnt);
+
 #endif
